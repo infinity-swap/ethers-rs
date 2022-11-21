@@ -131,9 +131,6 @@ pub enum ProviderError {
     #[error(transparent)]
     HexError(#[from] hex::FromHexError),
 
-    #[error(transparent)]
-    HTTPError(#[from] reqwest::Error),
-
     #[error("custom error: {0}")]
     CustomError(String),
 
@@ -930,26 +927,26 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     ///
     /// If the bytes returned from the ENS registrar/resolver cannot be interpreted as
     /// a string. This should theoretically never happen.
-    async fn resolve_nft(&self, token: erc::ERCNFT) -> Result<Url, ProviderError> {
-        let selector = token.type_.resolution_selector();
-        let tx = TransactionRequest {
-            data: Some([&selector[..], &token.id].concat().into()),
-            to: Some(NameOrAddress::Address(token.contract)),
-            ..Default::default()
-        };
-        let data = self.call(&tx.into(), None).await?;
-        let mut metadata_url = Url::parse(&decode_bytes::<String>(ParamType::String, data))
-            .map_err(|e| ProviderError::CustomError(format!("Invalid metadata url: {e}")))?;
+    // async fn resolve_nft(&self, token: erc::ERCNFT) -> Result<Url, ProviderError> {
+    //     let selector = token.type_.resolution_selector();
+    //     let tx = TransactionRequest {
+    //         data: Some([&selector[..], &token.id].concat().into()),
+    //         to: Some(NameOrAddress::Address(token.contract)),
+    //         ..Default::default()
+    //     };
+    //     let data = self.call(&tx.into(), None).await?;
+    //     let mut metadata_url = Url::parse(&decode_bytes::<String>(ParamType::String, data))
+    //         .map_err(|e| ProviderError::CustomError(format!("Invalid metadata url: {e}")))?;
 
-        if token.type_ == erc::ERCNFTType::ERC1155 {
-            metadata_url.set_path(&metadata_url.path().replace("%7Bid%7D", &hex::encode(token.id)));
-        }
-        if metadata_url.scheme() == "ipfs" {
-            metadata_url = erc::http_link_ipfs(metadata_url).map_err(ProviderError::CustomError)?;
-        }
-        let metadata: erc::Metadata = reqwest::get(metadata_url).await?.json().await?;
-        Url::parse(&metadata.image).map_err(|e| ProviderError::CustomError(e.to_string()))
-    }
+    //     if token.type_ == erc::ERCNFTType::ERC1155 {
+    //         metadata_url.set_path(&metadata_url.path().replace("%7Bid%7D",
+    // &hex::encode(token.id)));     }
+    //     if metadata_url.scheme() == "ipfs" {
+    //         metadata_url =
+    // erc::http_link_ipfs(metadata_url).map_err(ProviderError::CustomError)?;     }
+    //     let metadata: erc::Metadata = reqwest::get(metadata_url).await?.json().await?;
+    //     Url::parse(&metadata.image).map_err(|e| ProviderError::CustomError(e.to_string()))
+    // }
 
     /// Fetch a field for the `ens_name` (no None if not configured).
     ///
@@ -1354,13 +1351,8 @@ impl Provider<crate::Ipc> {
 
 impl Provider<HttpProvider> {
     /// The Url to which requests are made
-    pub fn url(&self) -> &Url {
+    pub fn url(&self) -> String {
         self.inner.url()
-    }
-
-    /// Mutable access to the Url to which requests are made
-    pub fn url_mut(&mut self) -> &mut Url {
-        self.inner.url_mut()
     }
 }
 
@@ -1428,7 +1420,7 @@ impl TryFrom<&str> for Provider<HttpProvider> {
     type Error = ParseError;
 
     fn try_from(src: &str) -> Result<Self, Self::Error> {
-        Ok(Provider::new(HttpProvider::new(Url::parse(src)?)))
+        Ok(Provider::new(HttpProvider::from_str(src)?))
     }
 }
 
@@ -1452,7 +1444,7 @@ impl<'a> TryFrom<&'a String> for Provider<HttpProvider> {
 impl Provider<RetryClient<HttpProvider>> {
     pub fn new_client(src: &str, max_retry: u32, initial_backoff: u64) -> Result<Self, ParseError> {
         Ok(Provider::new(RetryClient::new(
-            HttpProvider::new(Url::parse(src)?),
+            HttpProvider::from_str(src)?,
             Box::new(HttpRateLimitRetryPolicy),
             max_retry,
             initial_backoff,

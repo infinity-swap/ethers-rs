@@ -338,9 +338,6 @@ pub struct HttpRateLimitRetryPolicy;
 impl RetryPolicy<ClientError> for HttpRateLimitRetryPolicy {
     fn should_retry(&self, error: &ClientError) -> bool {
         match error {
-            ClientError::ReqwestError(err) => {
-                err.status() == Some(http::StatusCode::TOO_MANY_REQUESTS)
-            }
             ClientError::JsonRpcError(JsonRpcError { code, message, .. }) => {
                 // alchemy throws it this way
                 if *code == 429 {
@@ -405,19 +402,19 @@ fn compute_unit_offset_in_secs(
 
 /// Checks whether the `error` is the result of a connectivity issue, like
 /// `request::Error::TimedOut`
-fn maybe_connectivity(err: &ProviderError) -> bool {
-    if let ProviderError::HTTPError(reqwest_err) = err {
-        if reqwest_err.is_timeout() || reqwest_err.is_connect() {
-            return true
-        }
-        // Error HTTP codes (5xx) are considered connectivity issues and will prompt retry
-        if let Some(status) = reqwest_err.status() {
-            let code = status.as_u16();
-            if (500..600).contains(&code) {
-                return true
-            }
-        }
-    }
+fn maybe_connectivity(_err: &ProviderError) -> bool {
+    // if let ProviderError::HTTPError(reqwest_err) = err {
+    //     if reqwest_err.is_timeout() || reqwest_err.is_connect() {
+    //         return true
+    //     }
+    //     // Error HTTP codes (5xx) are considered connectivity issues and will prompt retry
+    //     if let Some(status) = reqwest_err.status() {
+    //         let code = status.as_u16();
+    //         if (500..600).contains(&code) {
+    //             return true
+    //         }
+    //     }
+    // }
     false
 }
 
