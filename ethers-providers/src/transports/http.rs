@@ -136,7 +136,14 @@ impl FromStr for Provider {
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
         Url::parse(src)?;
-        Ok(Provider::new(src.to_string(), None, vec![]))
+        let request_headers = vec![
+            HttpHeader {
+                name: "Host".to_string(),
+                value: src.trim_start_matches("https://").to_string(),
+            },
+            HttpHeader { name: "User-Agent".to_string(), value: "ethers_provider".to_string() },
+        ];
+        Ok(Provider::new(src.to_string(), Some(2000), request_headers))
     }
 }
 

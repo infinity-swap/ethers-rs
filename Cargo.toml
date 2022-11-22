@@ -63,13 +63,11 @@ eip712 = ["ethers-contract/eip712", "ethers-core/eip712"]
 ws = ["ethers-providers/ws"]
 ipc = ["ethers-providers/ipc"]
 rustls = [
-    "ethers-providers/rustls",
     "ethers-etherscan/rustls",
     "ethers-contract/rustls",
     "ethers-solc/rustls",
 ]
 openssl = [
-    "ethers-providers/openssl",
     "ethers-etherscan/openssl",
     "ethers-contract/openssl",
     "ethers-solc/openssl",
