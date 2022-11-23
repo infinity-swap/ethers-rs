@@ -266,9 +266,6 @@ impl Default for Quorum {
 
 // A future that returns the provider's response and it's index within the
 // `QuorumProvider` provider set
-#[cfg(target_arch = "wasm32")]
-type PendingRequest<'a> = Pin<Box<dyn Future<Output = (Result<Value, ProviderError>, usize)> + 'a>>;
-#[cfg(not(target_arch = "wasm32"))]
 type PendingRequest<'a> =
     Pin<Box<dyn Future<Output = (Result<Value, ProviderError>, usize)> + 'a + Send>>;
 
@@ -367,8 +364,7 @@ impl From<QuorumError> for ProviderError {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 pub trait JsonRpcClientWrapper: Send + Sync + Debug {
     async fn request(&self, method: &str, params: QuorumParams) -> Result<Value, ProviderError>;
 }
@@ -383,8 +379,7 @@ pub trait PubsubClientWrapper: JsonRpcClientWrapper {
     fn unsubscribe(&self, id: U256) -> Result<(), ProviderError>;
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl<C: JsonRpcClient> JsonRpcClientWrapper for C {
     async fn request(&self, method: &str, params: QuorumParams) -> Result<Value, ProviderError> {
         let fut = if let QuorumParams::Value(params) = params {
@@ -396,16 +391,14 @@ impl<C: JsonRpcClient> JsonRpcClientWrapper for C {
         Ok(fut.await.map_err(C::Error::into)?)
     }
 }
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl JsonRpcClientWrapper for Box<dyn JsonRpcClientWrapper> {
     async fn request(&self, method: &str, params: QuorumParams) -> Result<Value, ProviderError> {
         self.as_ref().request(method, params).await
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl JsonRpcClientWrapper for Box<dyn PubsubClientWrapper> {
     async fn request(&self, method: &str, params: QuorumParams) -> Result<Value, ProviderError> {
         self.as_ref().request(method, params).await
@@ -435,8 +428,7 @@ impl PubsubClientWrapper for Box<dyn PubsubClientWrapper> {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl<C> JsonRpcClient for QuorumProvider<C>
 where
     C: JsonRpcClientWrapper,

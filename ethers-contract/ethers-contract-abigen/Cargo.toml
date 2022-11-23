@@ -33,7 +33,7 @@ toml = "0.5.9"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # NOTE: this enables wasm compatibility for getrandom indirectly
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2.3", features = ["js"]}
 
 [package.metadata.docs.rs]
 all-features = true

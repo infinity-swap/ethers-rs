@@ -4,7 +4,6 @@
 #![allow(clippy::type_complexity)]
 #![doc = include_str!("../README.md")]
 mod transports;
-use futures_util::future::join_all;
 pub use transports::*;
 
 mod provider;
@@ -15,9 +14,6 @@ pub mod ens;
 
 mod pending_transaction;
 pub use pending_transaction::PendingTransaction;
-
-mod pending_escalator;
-pub use pending_escalator::EscalatingPending;
 
 mod log_query;
 pub use log_query::{LogQuery, LogQueryError};
@@ -55,8 +51,7 @@ pub(crate) type PinBoxFut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Provide
 pub(crate) type PinBoxFut<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, ProviderError>> + Send + 'a>>;
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 #[auto_impl(&, Box, Arc)]
 /// Trait which must be implemented by data transports to be used with the Ethereum
 /// JSON-RPC provider.
@@ -144,7 +139,7 @@ where
 ///     }
 /// }
 /// ```
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(target_arch = "wasm32", async_trait)]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 #[auto_impl(&, Box, Arc)]
 pub trait Middleware: Sync + Send + Debug {
@@ -205,51 +200,51 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().send_transaction(tx, block).await.map_err(FromErr::from)
     }
 
-    /// Send a transaction with a simple escalation policy.
-    ///
-    /// `policy` should be a boxed function that maps `original_gas_price`
-    /// and `number_of_previous_escalations` -> `new_gas_price`.
-    ///
-    /// e.g. `Box::new(|start, escalation_index| start * 1250.pow(escalations) /
-    /// 1000.pow(escalations))`
-    async fn send_escalating<'a>(
-        &'a self,
-        tx: &TypedTransaction,
-        escalations: usize,
-        policy: EscalationPolicy,
-    ) -> Result<EscalatingPending<'a, Self::Provider>, Self::Error> {
-        let mut original = tx.clone();
-        self.fill_transaction(&mut original, None).await?;
+    // / Send a transaction with a simple escalation policy.
+    // /
+    // / `policy` should be a boxed function that maps `original_gas_price`
+    // / and `number_of_previous_escalations` -> `new_gas_price`.
+    // /
+    // / e.g. `Box::new(|start, escalation_index| start * 1250.pow(escalations) /
+    // / 1000.pow(escalations))`
+    // async fn send_escalating<'a>(
+    //     &'a self,
+    //     tx: &TypedTransaction,
+    //     escalations: usize,
+    //     policy: EscalationPolicy,
+    // ) -> Result<EscalatingPending<'a, Self::Provider>, Self::Error> {
+    //     let mut original = tx.clone();
+    //     self.fill_transaction(&mut original, None).await?;
 
-        // set the nonce, if no nonce is found
-        if original.nonce().is_none() {
-            let nonce =
-                self.get_transaction_count(tx.from().copied().unwrap_or_default(), None).await?;
-            original.set_nonce(nonce);
-        }
+    //     // set the nonce, if no nonce is found
+    //     if original.nonce().is_none() {
+    //         let nonce =
+    //             self.get_transaction_count(tx.from().copied().unwrap_or_default(), None).await?;
+    //         original.set_nonce(nonce);
+    //     }
 
-        let gas_price = original.gas_price().expect("filled");
-        let sign_futs: Vec<_> = (0..escalations)
-            .map(|i| {
-                let new_price = policy(gas_price, i);
-                let mut r = original.clone();
-                r.set_gas_price(new_price);
-                r
-            })
-            .map(|req| async move {
-                self.sign_transaction(&req, self.default_sender().unwrap_or_default())
-                    .await
-                    .map(|sig| req.rlp_signed(&sig))
-            })
-            .collect();
+    //     let gas_price = original.gas_price().expect("filled");
+    //     let sign_futs: Vec<_> = (0..escalations)
+    //         .map(|i| {
+    //             let new_price = policy(gas_price, i);
+    //             let mut r = original.clone();
+    //             r.set_gas_price(new_price);
+    //             r
+    //         })
+    //         .map(|req| async move {
+    //             self.sign_transaction(&req, self.default_sender().unwrap_or_default())
+    //                 .await
+    //                 .map(|sig| req.rlp_signed(&sig))
+    //         })
+    //         .collect();
 
-        // we reverse for convenience. Ensuring that we can always just
-        // `pop()` the next tx off the back later
-        let mut signed = join_all(sign_futs).await.into_iter().collect::<Result<Vec<_>, _>>()?;
-        signed.reverse();
+    //     // we reverse for convenience. Ensuring that we can always just
+    //     // `pop()` the next tx off the back later
+    //     let mut signed = join_all(sign_futs).await.into_iter().collect::<Result<Vec<_>, _>>()?;
+    //     signed.reverse();
 
-        Ok(EscalatingPending::new(self.provider(), signed))
-    }
+    //     Ok(EscalatingPending::new(self.provider(), signed))
+    // }
 
     async fn resolve_name(&self, ens_name: &str) -> Result<Address, Self::Error> {
         self.inner().resolve_name(ens_name).await.map_err(FromErr::from)
@@ -664,8 +659,7 @@ pub trait Middleware: Sync + Send + Debug {
 }
 
 #[cfg(feature = "celo")]
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 pub trait CeloMiddleware: Middleware {
     async fn get_validators_bls_public_keys<T: Into<BlockId> + Send + Sync>(
         &self,

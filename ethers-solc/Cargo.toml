@@ -52,7 +52,7 @@ svm-builds = { package = "svm-rs-builds", version = "0.1.8", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # NOTE: this enables wasm compatibility for getrandom indirectly
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2.3", features = ["js"]}
 
 [dev-dependencies]
 criterion = { version = "0.3", features = ["async_tokio"] }

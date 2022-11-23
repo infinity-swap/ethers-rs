@@ -274,8 +274,7 @@ impl<P: JsonRpcClient> Provider<P> {
 }
 
 #[cfg(feature = "celo")]
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl<P: JsonRpcClient> CeloMiddleware for Provider<P> {
     async fn get_validators_bls_public_keys<T: Into<BlockId> + Send + Sync>(
         &self,
@@ -286,8 +285,7 @@ impl<P: JsonRpcClient> CeloMiddleware for Provider<P> {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl<P: JsonRpcClient> Middleware for Provider<P> {
     type Error = ProviderError;
     type Provider = P;
@@ -1484,8 +1482,7 @@ mod sealed {
 /// use ethers_providers::{Http, Provider, ProviderExt};
 /// let http_provider = Provider::<Http>::try_from("https://eth-mainnet.alchemyapi.io/v2/API_KEY").unwrap().set_chain(Chain::Mainnet);
 /// ```
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 pub trait ProviderExt: sealed::Sealed {
     /// The error type that can occur when creating a provider
     type Error: Debug;
@@ -1521,8 +1518,7 @@ pub trait ProviderExt: sealed::Sealed {
     fn set_chain(&mut self, chain: impl Into<Chain>) -> &mut Self;
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[async_trait]
 impl ProviderExt for Provider<HttpProvider> {
     type Error = ParseError;
 
