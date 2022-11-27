@@ -20,8 +20,10 @@ macro_rules! if_not_wasm {
 }
 
 #[cfg(all(target_family = "unix", feature = "ipc"))]
+#[cfg(not(target_arch = "wasm32"))]
 mod ipc;
 #[cfg(all(target_family = "unix", feature = "ipc"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use ipc::{Ipc, IpcError};
 
 mod http;
@@ -38,7 +40,9 @@ pub use quorum::{JsonRpcClientWrapper, Quorum, QuorumError, QuorumProvider, Weig
 mod rw;
 pub use rw::{RwClient, RwClientError};
 
+#[cfg(not(target_arch = "wasm32"))]
 mod retry;
+#[cfg(not(target_arch = "wasm32"))]
 pub use retry::*;
 
 mod mock;

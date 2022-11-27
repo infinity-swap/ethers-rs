@@ -110,6 +110,7 @@ impl FromErr<ProviderError> for ProviderError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Error)]
 /// An error thrown when making a call to the provider
 pub enum ProviderError {
@@ -133,6 +134,41 @@ pub enum ProviderError {
 
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
+
+    #[error("custom error: {0}")]
+    CustomError(String),
+
+    #[error("unsupported RPC")]
+    UnsupportedRPC,
+
+    #[error("unsupported node client")]
+    UnsupportedNodeClient,
+
+    #[error("Attempted to sign a transaction with no available signer. Hint: did you mean to use a SignerMiddleware?")]
+    SignerUnavailable,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Error)]
+/// An error thrown when making a call to the provider
+pub enum ProviderError {
+    /// An internal error in the JSON RPC Client
+    #[error(transparent)]
+    JsonRpcClientError(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    /// An error during ENS name resolution
+    #[error("ens name not found: {0}")]
+    EnsError(String),
+
+    /// Invalid reverse ENS name
+    #[error("reverse ens name not pointing to itself: {0}")]
+    EnsNotOwned(String),
+
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    HexError(#[from] hex::FromHexError),
 
     #[error("custom error: {0}")]
     CustomError(String),
@@ -930,6 +966,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     ///
     /// If the bytes returned from the ENS registrar/resolver cannot be interpreted as
     /// a string. This should theoretically never happen.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn resolve_nft(&self, token: erc::ERCNFT) -> Result<Url, ProviderError> {
         let selector = token.type_.resolution_selector();
         let tx = TransactionRequest {
@@ -1352,6 +1389,7 @@ impl Provider<crate::Ipc> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Provider<HttpProvider> {
     /// The Url to which requests are made
     pub fn url(&self) -> &Url {
@@ -1361,6 +1399,14 @@ impl Provider<HttpProvider> {
     /// Mutable access to the Url to which requests are made
     pub fn url_mut(&mut self) -> &mut Url {
         self.inner.url_mut()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Provider<HttpProvider> {
+    /// The Url to which requests are made
+    pub fn url(&self) -> String {
+        self.inner.url()
     }
 }
 
@@ -1424,11 +1470,21 @@ fn decode_bytes<T: Detokenize>(param: ParamType, bytes: Bytes) -> T {
     T::from_tokens(tokens).expect("could not parse tokens as address")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl TryFrom<&str> for Provider<HttpProvider> {
     type Error = ParseError;
 
     fn try_from(src: &str) -> Result<Self, Self::Error> {
         Ok(Provider::new(HttpProvider::new(Url::parse(src)?)))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl TryFrom<&str> for Provider<HttpProvider> {
+    type Error = ParseError;
+
+    fn try_from(src: &str) -> Result<Self, Self::Error> {
+        Ok(Provider::new(HttpProvider::from_str(src)?))
     }
 }
 

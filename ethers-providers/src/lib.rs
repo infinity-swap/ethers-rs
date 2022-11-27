@@ -4,6 +4,7 @@
 #![allow(clippy::type_complexity)]
 #![doc = include_str!("../README.md")]
 mod transports;
+#[cfg(not(target_arch = "wasm32"))]
 use futures_util::future::join_all;
 pub use transports::*;
 
@@ -16,7 +17,9 @@ pub mod ens;
 mod pending_transaction;
 pub use pending_transaction::PendingTransaction;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod pending_escalator;
+#[cfg(not(target_arch = "wasm32"))]
 pub use pending_escalator::EscalatingPending;
 
 mod log_query;
@@ -212,6 +215,7 @@ pub trait Middleware: Sync + Send + Debug {
     ///
     /// e.g. `Box::new(|start, escalation_index| start * 1250.pow(escalations) /
     /// 1000.pow(escalations))`
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_escalating<'a>(
         &'a self,
         tx: &TypedTransaction,
