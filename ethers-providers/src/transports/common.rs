@@ -41,6 +41,7 @@ pub struct Request<'a, T> {
     params: T,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<'a, T> Request<'a, T> {
     /// Creates a new JSON RPC request
     pub fn new(id: u64, method: &'a str, params: T) -> Self {
