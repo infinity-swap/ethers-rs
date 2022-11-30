@@ -89,6 +89,7 @@ impl FromStr for NodeClient {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Provider<P> {
     inner: P,

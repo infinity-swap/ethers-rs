@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use crate::TransactionStream;
 use crate::{JsonRpcClient, Middleware, Provider};
+#[allow(unused_imports)]
 use ethers_core::types::{TxHash, U256};
 
 use futures_util::stream::Stream;
