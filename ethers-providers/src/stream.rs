@@ -17,8 +17,6 @@ use std::{
 
 #[cfg(not(target_arch = "wasm32"))]
 use futures_timer::Delay;
-#[cfg(target_arch = "wasm32")]
-use wasm_timer::Delay;
 
 // https://github.com/tomusdrw/rust-web3/blob/befcb2fb8f3ca0a43e3081f68886fa327e64c8e6/src/api/eth_filter.rs#L20
 pub fn interval(duration: Duration) -> impl Stream<Item = ()> + Send + Unpin {

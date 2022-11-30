@@ -1,5 +1,6 @@
-use crate::{JsonRpcClient, Middleware, Provider, TransactionStream};
-
+#[cfg(not(target_arch = "wasm32"))]
+use crate::TransactionStream;
+use crate::{JsonRpcClient, Middleware, Provider};
 use ethers_core::types::{TxHash, U256};
 
 use futures_util::stream::Stream;
@@ -115,6 +116,7 @@ where
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<'a, P> SubscriptionStream<'a, P, TxHash>
 where
     P: PubsubClient,

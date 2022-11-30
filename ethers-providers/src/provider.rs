@@ -2,15 +2,18 @@ use crate::{
     call_raw::CallBuilder,
     ens, erc, maybe,
     pubsub::{PubsubClient, SubscriptionStream},
-    stream::{FilterWatcher, DEFAULT_LOCAL_POLL_INTERVAL, DEFAULT_POLL_INTERVAL},
     FromErr, Http as HttpProvider, JsonRpcClient, JsonRpcClientWrapper, LogQuery, MockProvider,
-    PendingTransaction, QuorumProvider, RwClient, SyncingStatus,
+    QuorumProvider, RwClient, SyncingStatus,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "ws"))]
 use crate::transports::Authorization;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::transports::{HttpRateLimitRetryPolicy, RetryClient};
+use crate::{
+    stream::{FilterWatcher, DEFAULT_LOCAL_POLL_INTERVAL, DEFAULT_POLL_INTERVAL},
+    transports::{HttpRateLimitRetryPolicy, RetryClient},
+    PendingTransaction,
+};
 
 #[cfg(feature = "celo")]
 use crate::CeloMiddleware;
@@ -632,6 +635,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
 
     /// Sends the transaction to the entire Ethereum network and returns the transaction's hash
     /// This will consume gas from the account that signed the transaction.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
         &self,
         tx: T,
@@ -644,6 +648,20 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
         Ok(PendingTransaction::new(tx_hash, self))
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
+        &self,
+        tx: T,
+        block: Option<BlockId>,
+    ) -> Result<H256, ProviderError> {
+        let mut tx = tx.into();
+        self.fill_transaction(&mut tx, block).await?;
+        let tx_hash = self.request("eth_sendTransaction", [tx]).await?;
+
+        Ok(tx_hash)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     /// Send the raw RLP encoded transaction to the entire Ethereum network and returns the
     /// transaction's hash This will consume gas from the account that signed the transaction.
     async fn send_raw_transaction<'a>(
@@ -653,6 +671,13 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
         let rlp = utils::serialize(&tx);
         let tx_hash = self.request("eth_sendRawTransaction", [rlp]).await?;
         Ok(PendingTransaction::new(tx_hash, self))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn send_raw_transaction(&self, tx: Bytes) -> Result<H256, ProviderError> {
+        let rlp = utils::serialize(&tx);
+        let tx_hash = self.request("eth_sendRawTransaction", [rlp]).await?;
+        Ok(tx_hash)
     }
 
     /// The JSON-RPC provider is at the bottom-most position in the middleware stack. Here we check
@@ -704,6 +729,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams matching filter logs
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch<'a>(
         &'a self,
         filter: &Filter,
@@ -714,6 +740,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams new block hashes
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_blocks(&self) -> Result<FilterWatcher<'_, P, H256>, ProviderError> {
         let id = self.new_filter(FilterKind::NewBlocks).await?;
         let filter = FilterWatcher::new(id, self).interval(self.get_interval());
@@ -721,6 +748,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams pending transactions
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_pending_transactions(
         &self,
     ) -> Result<FilterWatcher<'_, P, H256>, ProviderError> {
@@ -1332,6 +1360,7 @@ impl<P: JsonRpcClient> Provider<P> {
 
     /// Sets the default polling interval for event filters and pending transactions
     /// (default: 7 seconds)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn set_interval<T: Into<Duration>>(&mut self, interval: T) -> &mut Self {
         self.interval = Some(interval.into());
         self
@@ -1340,6 +1369,7 @@ impl<P: JsonRpcClient> Provider<P> {
     /// Sets the default polling interval for event filters and pending transactions
     /// (default: 7 seconds)
     #[must_use]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn interval<T: Into<Duration>>(mut self, interval: T) -> Self {
         self.set_interval(interval);
         self
@@ -1347,6 +1377,7 @@ impl<P: JsonRpcClient> Provider<P> {
 
     /// Gets the polling interval which the provider currently uses for event filters
     /// and pending transactions (default: 7 seconds)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_interval(&self) -> Duration {
         self.interval.unwrap_or(DEFAULT_POLL_INTERVAL)
     }
@@ -1585,7 +1616,7 @@ pub trait ProviderExt: sealed::Sealed {
     fn set_chain(&mut self, chain: impl Into<Chain>) -> &mut Self;
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl ProviderExt for Provider<HttpProvider> {
     type Error = ParseError;
