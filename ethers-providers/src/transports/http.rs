@@ -5,9 +5,10 @@ use async_trait::async_trait;
 #[cfg(not(target_arch = "wasm32"))]
 use reqwest::{header::HeaderValue, Client, Error as ReqwestError};
 use serde::{de::DeserializeOwned, Serialize};
-use std::str::FromStr;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    str::FromStr,
+    sync::atomic::{AtomicU64, Ordering},
+};
 use thiserror::Error;
 use url::Url;
 
@@ -16,6 +17,8 @@ use ic_cdk::api::management_canister::http_request::{
     http_request, CanisterHttpRequestArgument, HttpHeader, HttpMethod, HttpResponse, TransformArgs,
     TransformContext,
 };
+#[cfg(target_arch = "wasm32")]
+use jsonrpc_core::Output;
 
 use super::common::JsonRpcError;
 #[cfg(not(target_arch = "wasm32"))]
@@ -47,6 +50,7 @@ pub struct Provider {
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug)]
 pub struct Provider {
+    pub id: AtomicU64,
     pub url: String,
     pub max_response_bytes: Option<u64>,
     pub headers: Vec<HttpHeader>,
@@ -157,23 +161,28 @@ impl JsonRpcClient for Provider {
         method: &str,
         params: T,
     ) -> Result<R, ClientError> {
-        let method = match method.to_lowercase().as_str() {
-            "get" => HttpMethod::GET,
-            "post" => HttpMethod::POST,
-            "head" => HttpMethod::HEAD,
-            _ => return Err(ClientError::IcError { err: "error method".to_string() }),
-        };
+        let next_id = self.id.fetch_add(1, Ordering::SeqCst);
+
+        let http_method = HttpMethod::POST;
+
+        let data = serde_json::json!({
+            "jsonrpc":"2.0",
+            "method":method,
+            "params":params,
+            "id": next_id,
+        });
 
         let request = CanisterHttpRequestArgument {
             url: self.url.clone(),
-            max_response_bytes: self.max_response_bytes,
-            method,
+            // max_response_bytes: self.max_response_bytes,
+            max_response_bytes: None,
+            method: http_method,
             headers: self.headers.clone(),
-            body: Some(serde_json::to_vec(&params).unwrap()),
+            body: Some(serde_json::to_vec(&data).unwrap()),
             transform: Some(TransformContext::new(transform, vec![])),
         };
 
-        let body = match http_request(request).await {
+        let body = match http_request(request.clone()).await {
             Ok((response,)) => response.body,
             Err((r, m)) => {
                 return Err(ClientError::IcError {
@@ -184,13 +193,25 @@ impl JsonRpcClient for Provider {
             }
         };
 
-        let raw = serde_json::from_slice(&body).map_err(|err| ClientError::SerdeJson {
+        ic_cdk::print(format!("req: {:?}, res: {:?}", request, body));
+
+        let output = serde_json::from_slice::<Output>(&body).map_err(|err| {
+            ClientError::SerdeJson { err, text: String::from_utf8_lossy(&body).to_string() }
+        })?;
+
+        let result = match output {
+            Output::Success(value) => Ok(value.result),
+            Output::Failure(value) => Err(ClientError::JsonRpcError(JsonRpcError {
+                code: value.error.code.code(),
+                message: value.error.message,
+                data: value.error.data,
+            })),
+        }?;
+
+        let res: R = serde_json::from_value(result).map_err(|err| ClientError::SerdeJson {
             err,
             text: String::from_utf8_lossy(&body).to_string(),
         })?;
-
-        let res = serde_json::from_str(raw)
-            .map_err(|err| ClientError::SerdeJson { err, text: raw.to_string() })?;
 
         Ok(res)
     }
@@ -281,7 +302,7 @@ impl Provider {
     /// ```
     pub fn new(url: String, max_response_bytes: Option<u64>, headers: Vec<HttpHeader>) -> Self {
         Url::parse(&url).expect("invaild url format");
-        Self { url, max_response_bytes, headers }
+        Self { id: AtomicU64::new(1), url, max_response_bytes, headers }
     }
 
     /// The Url to which requests are made
@@ -318,11 +339,11 @@ impl FromStr for Provider {
     type Err = url::ParseError;
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Url::parse(src)?;
+        let url = Url::parse(src)?;
         let request_headers = vec![
             HttpHeader {
                 name: "Host".to_string(),
-                value: src.trim_start_matches("https://").to_string(),
+                value: url.domain().ok_or(url::ParseError::EmptyHost)?.to_string(),
             },
             HttpHeader { name: "User-Agent".to_string(), value: "ethers_provider".to_string() },
         ];
@@ -341,6 +362,7 @@ impl Clone for Provider {
 impl Clone for Provider {
     fn clone(&self) -> Self {
         Self {
+            id: AtomicU64::new(1),
             url: self.url.clone(),
             max_response_bytes: self.max_response_bytes,
             headers: self.headers.clone(),
