@@ -193,7 +193,7 @@ impl JsonRpcClient for Provider {
             }
         };
 
-        ic_cdk::print(format!("req: {:?}, res: {:?}", request, body));
+        ic_cdk::print(format!("req: {:?}", request));
 
         let output = serde_json::from_slice::<Output>(&body).map_err(|err| {
             ClientError::SerdeJson { err, text: String::from_utf8_lossy(&body).to_string() }

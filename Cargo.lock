@@ -1320,7 +1320,7 @@ dependencies = [
  "bytes",
  "ethers-addressbook",
  "ethers-contract",
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-etherscan",
  "ethers-middleware",
  "ethers-providers",
@@ -1338,7 +1338,7 @@ dependencies = [
 name = "ethers-addressbook"
 version = "1.0.0"
 dependencies = [
- "ethers-core",
+ "ethers-core 1.0.0",
  "once_cell",
  "serde",
  "serde_json",
@@ -1350,7 +1350,7 @@ version = "1.0.0"
 dependencies = [
  "ethers-contract-abigen",
  "ethers-contract-derive",
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-derive-eip712",
  "ethers-providers",
  "ethers-signers",
@@ -1372,7 +1372,7 @@ dependencies = [
  "Inflector",
  "cfg-if 1.0.0",
  "dunce",
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-solc",
  "eyre",
  "getrandom 0.2.8",
@@ -1395,7 +1395,7 @@ name = "ethers-contract-derive"
 version = "1.0.0"
 dependencies = [
  "ethers-contract-abigen",
- "ethers-core",
+ "ethers-core 1.0.0",
  "hex",
  "proc-macro2",
  "quote",
@@ -1435,11 +1435,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethers-core"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ade3e9c97727343984e1ceada4fdab11142d2ee3472d2c67027d56b1251d4f15"
+dependencies = [
+ "arrayvec 0.7.2",
+ "bytes",
+ "chrono",
+ "elliptic-curve",
+ "ethabi",
+ "generic-array 0.14.6",
+ "hex",
+ "k256",
+ "open-fastrlp",
+ "rand 0.8.5",
+ "rlp",
+ "rlp-derive",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror",
+ "tiny-keccak",
+ "unicode-xid",
+]
+
+[[package]]
 name = "ethers-derive-eip712"
 version = "1.0.0"
 dependencies = [
  "ethers-contract-derive",
- "ethers-core",
+ "ethers-core 1.0.0",
  "hex",
  "quote",
  "serde_json",
@@ -1450,7 +1476,7 @@ dependencies = [
 name = "ethers-etherscan"
 version = "1.0.0"
 dependencies = [
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-solc",
  "getrandom 0.2.8",
  "reqwest",
@@ -1473,7 +1499,7 @@ dependencies = [
  "async-trait",
  "auto_impl 0.5.0",
  "ethers-contract",
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-etherscan",
  "ethers-providers",
  "ethers-signers",
@@ -1503,7 +1529,7 @@ dependencies = [
  "auto_impl 1.0.1",
  "base64 0.13.1",
  "bytes",
- "ethers-core",
+ "ethers-core 1.0.2",
  "futures-channel",
  "futures-core",
  "futures-timer",
@@ -1542,7 +1568,7 @@ dependencies = [
  "elliptic-curve",
  "eth-keystore",
  "ethers-contract-derive",
- "ethers-core",
+ "ethers-core 1.0.0",
  "ethers-derive-eip712",
  "futures-executor",
  "futures-util",
@@ -1572,7 +1598,7 @@ dependencies = [
  "criterion",
  "dunce",
  "env_logger",
- "ethers-core",
+ "ethers-core 1.0.0",
  "fs_extra",
  "futures-util",
  "getrandom 0.2.8",
