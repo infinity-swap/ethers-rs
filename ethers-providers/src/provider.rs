@@ -2,15 +2,18 @@ use crate::{
     call_raw::CallBuilder,
     ens, erc, maybe,
     pubsub::{PubsubClient, SubscriptionStream},
-    stream::{FilterWatcher, DEFAULT_LOCAL_POLL_INTERVAL, DEFAULT_POLL_INTERVAL},
     FromErr, Http as HttpProvider, JsonRpcClient, JsonRpcClientWrapper, LogQuery, MockProvider,
-    PendingTransaction, QuorumProvider, RwClient, SyncingStatus,
+    QuorumProvider, RwClient, SyncingStatus,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "ws"))]
 use crate::transports::Authorization;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::transports::{HttpRateLimitRetryPolicy, RetryClient};
+use crate::{
+    stream::{FilterWatcher, DEFAULT_LOCAL_POLL_INTERVAL, DEFAULT_POLL_INTERVAL},
+    transports::{HttpRateLimitRetryPolicy, RetryClient},
+    PendingTransaction,
+};
 
 #[cfg(feature = "celo")]
 use crate::CeloMiddleware;
@@ -86,6 +89,7 @@ impl FromStr for NodeClient {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Provider<P> {
     inner: P,
@@ -110,6 +114,7 @@ impl FromErr<ProviderError> for ProviderError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Error)]
 /// An error thrown when making a call to the provider
 pub enum ProviderError {
@@ -133,6 +138,41 @@ pub enum ProviderError {
 
     #[error(transparent)]
     HTTPError(#[from] reqwest::Error),
+
+    #[error("custom error: {0}")]
+    CustomError(String),
+
+    #[error("unsupported RPC")]
+    UnsupportedRPC,
+
+    #[error("unsupported node client")]
+    UnsupportedNodeClient,
+
+    #[error("Attempted to sign a transaction with no available signer. Hint: did you mean to use a SignerMiddleware?")]
+    SignerUnavailable,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Error)]
+/// An error thrown when making a call to the provider
+pub enum ProviderError {
+    /// An internal error in the JSON RPC Client
+    #[error(transparent)]
+    JsonRpcClientError(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    /// An error during ENS name resolution
+    #[error("ens name not found: {0}")]
+    EnsError(String),
+
+    /// Invalid reverse ENS name
+    #[error("reverse ens name not pointing to itself: {0}")]
+    EnsNotOwned(String),
+
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    HexError(#[from] hex::FromHexError),
 
     #[error("custom error: {0}")]
     CustomError(String),
@@ -596,6 +636,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
 
     /// Sends the transaction to the entire Ethereum network and returns the transaction's hash
     /// This will consume gas from the account that signed the transaction.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
         &self,
         tx: T,
@@ -608,6 +649,20 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
         Ok(PendingTransaction::new(tx_hash, self))
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
+        &self,
+        tx: T,
+        block: Option<BlockId>,
+    ) -> Result<H256, ProviderError> {
+        let mut tx = tx.into();
+        self.fill_transaction(&mut tx, block).await?;
+        let tx_hash = self.request("eth_sendTransaction", [tx]).await?;
+
+        Ok(tx_hash)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     /// Send the raw RLP encoded transaction to the entire Ethereum network and returns the
     /// transaction's hash This will consume gas from the account that signed the transaction.
     async fn send_raw_transaction<'a>(
@@ -617,6 +672,13 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
         let rlp = utils::serialize(&tx);
         let tx_hash = self.request("eth_sendRawTransaction", [rlp]).await?;
         Ok(PendingTransaction::new(tx_hash, self))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn send_raw_transaction(&self, tx: Bytes) -> Result<H256, ProviderError> {
+        let rlp = utils::serialize(&tx);
+        let tx_hash = self.request("eth_sendRawTransaction", [rlp]).await?;
+        Ok(tx_hash)
     }
 
     /// The JSON-RPC provider is at the bottom-most position in the middleware stack. Here we check
@@ -668,6 +730,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams matching filter logs
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch<'a>(
         &'a self,
         filter: &Filter,
@@ -678,6 +741,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams new block hashes
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_blocks(&self) -> Result<FilterWatcher<'_, P, H256>, ProviderError> {
         let id = self.new_filter(FilterKind::NewBlocks).await?;
         let filter = FilterWatcher::new(id, self).interval(self.get_interval());
@@ -685,6 +749,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     }
 
     /// Streams pending transactions
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_pending_transactions(
         &self,
     ) -> Result<FilterWatcher<'_, P, H256>, ProviderError> {
@@ -930,6 +995,7 @@ impl<P: JsonRpcClient> Middleware for Provider<P> {
     ///
     /// If the bytes returned from the ENS registrar/resolver cannot be interpreted as
     /// a string. This should theoretically never happen.
+    #[cfg(not(target_arch = "wasm32"))]
     async fn resolve_nft(&self, token: erc::ERCNFT) -> Result<Url, ProviderError> {
         let selector = token.type_.resolution_selector();
         let tx = TransactionRequest {
@@ -1295,6 +1361,7 @@ impl<P: JsonRpcClient> Provider<P> {
 
     /// Sets the default polling interval for event filters and pending transactions
     /// (default: 7 seconds)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn set_interval<T: Into<Duration>>(&mut self, interval: T) -> &mut Self {
         self.interval = Some(interval.into());
         self
@@ -1303,6 +1370,7 @@ impl<P: JsonRpcClient> Provider<P> {
     /// Sets the default polling interval for event filters and pending transactions
     /// (default: 7 seconds)
     #[must_use]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn interval<T: Into<Duration>>(mut self, interval: T) -> Self {
         self.set_interval(interval);
         self
@@ -1310,6 +1378,7 @@ impl<P: JsonRpcClient> Provider<P> {
 
     /// Gets the polling interval which the provider currently uses for event filters
     /// and pending transactions (default: 7 seconds)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn get_interval(&self) -> Duration {
         self.interval.unwrap_or(DEFAULT_POLL_INTERVAL)
     }
@@ -1352,6 +1421,7 @@ impl Provider<crate::Ipc> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Provider<HttpProvider> {
     /// The Url to which requests are made
     pub fn url(&self) -> &Url {
@@ -1361,6 +1431,14 @@ impl Provider<HttpProvider> {
     /// Mutable access to the Url to which requests are made
     pub fn url_mut(&mut self) -> &mut Url {
         self.inner.url_mut()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Provider<HttpProvider> {
+    /// The Url to which requests are made
+    pub fn url(&self) -> String {
+        self.inner.url()
     }
 }
 
@@ -1424,11 +1502,21 @@ fn decode_bytes<T: Detokenize>(param: ParamType, bytes: Bytes) -> T {
     T::from_tokens(tokens).expect("could not parse tokens as address")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl TryFrom<&str> for Provider<HttpProvider> {
     type Error = ParseError;
 
     fn try_from(src: &str) -> Result<Self, Self::Error> {
         Ok(Provider::new(HttpProvider::new(Url::parse(src)?)))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl TryFrom<&str> for Provider<HttpProvider> {
+    type Error = ParseError;
+
+    fn try_from(src: &str) -> Result<Self, Self::Error> {
+        Ok(Provider::new(HttpProvider::from_str(src)?))
     }
 }
 
@@ -1529,7 +1617,7 @@ pub trait ProviderExt: sealed::Sealed {
     fn set_chain(&mut self, chain: impl Into<Chain>) -> &mut Self;
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl ProviderExt for Provider<HttpProvider> {
     type Error = ParseError;

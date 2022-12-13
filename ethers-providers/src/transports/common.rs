@@ -41,6 +41,7 @@ pub struct Request<'a, T> {
     params: T,
 }
 
+#[allow(dead_code)]
 impl<'a, T> Request<'a, T> {
     /// Creates a new JSON RPC request
     pub fn new(id: u64, method: &'a str, params: T) -> Self {

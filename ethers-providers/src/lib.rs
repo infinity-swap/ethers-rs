@@ -4,6 +4,7 @@
 #![allow(clippy::type_complexity)]
 #![doc = include_str!("../README.md")]
 mod transports;
+#[cfg(not(target_arch = "wasm32"))]
 use futures_util::future::join_all;
 pub use transports::*;
 
@@ -13,17 +14,26 @@ pub use provider::{is_local_endpoint, FilterKind, Provider, ProviderError, Provi
 // ENS support
 pub mod ens;
 
+// The PendingTransaction's wasm implementation need wasm_timer::Delay, which will introduce
+// the wasm-bindgen, and can't install in canister.
+#[cfg(not(target_arch = "wasm32"))]
 mod pending_transaction;
+#[cfg(not(target_arch = "wasm32"))]
 pub use pending_transaction::PendingTransaction;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod pending_escalator;
+#[cfg(not(target_arch = "wasm32"))]
 pub use pending_escalator::EscalatingPending;
 
 mod log_query;
 pub use log_query::{LogQuery, LogQueryError};
 
+#[cfg(not(target_arch = "wasm32"))]
 mod stream;
+#[cfg(not(target_arch = "wasm32"))]
 pub use futures_util::StreamExt;
+#[cfg(not(target_arch = "wasm32"))]
 pub use stream::{
     interval, FilterWatcher, TransactionStream, DEFAULT_LOCAL_POLL_INTERVAL, DEFAULT_POLL_INTERVAL,
 };
@@ -197,11 +207,21 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().get_block_number().await.map_err(FromErr::from)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
         &self,
         tx: T,
         block: Option<BlockId>,
     ) -> Result<PendingTransaction<'_, Self::Provider>, Self::Error> {
+        self.inner().send_transaction(tx, block).await.map_err(FromErr::from)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn send_transaction<T: Into<TypedTransaction> + Send + Sync>(
+        &self,
+        tx: T,
+        block: Option<BlockId>,
+    ) -> Result<H256, Self::Error> {
         self.inner().send_transaction(tx, block).await.map_err(FromErr::from)
     }
 
@@ -212,6 +232,7 @@ pub trait Middleware: Sync + Send + Debug {
     ///
     /// e.g. `Box::new(|start, escalation_index| start * 1250.pow(escalations) /
     /// 1000.pow(escalations))`
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_escalating<'a>(
         &'a self,
         tx: &TypedTransaction,
@@ -380,10 +401,16 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().get_accounts().await.map_err(FromErr::from)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     async fn send_raw_transaction<'a>(
         &'a self,
         tx: Bytes,
     ) -> Result<PendingTransaction<'a, Self::Provider>, Self::Error> {
+        self.inner().send_raw_transaction(tx).await.map_err(FromErr::from)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn send_raw_transaction(&self, tx: Bytes) -> Result<H256, Self::Error> {
         self.inner().send_raw_transaction(tx).await.map_err(FromErr::from)
     }
 
@@ -437,6 +464,7 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().uninstall_filter(id).await.map_err(FromErr::from)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch<'a>(
         &'a self,
         filter: &Filter,
@@ -444,6 +472,7 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().watch(filter).await.map_err(FromErr::from)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_pending_transactions(
         &self,
     ) -> Result<FilterWatcher<'_, Self::Provider, H256>, Self::Error> {
@@ -458,6 +487,7 @@ pub trait Middleware: Sync + Send + Debug {
         self.inner().get_filter_changes(id).await.map_err(FromErr::from)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     async fn watch_blocks(&self) -> Result<FilterWatcher<'_, Self::Provider, H256>, Self::Error> {
         self.inner().watch_blocks().await.map_err(FromErr::from)
     }

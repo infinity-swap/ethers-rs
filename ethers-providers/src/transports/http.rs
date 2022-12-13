@@ -2,6 +2,7 @@
 use crate::{provider::ProviderError, JsonRpcClient};
 
 use async_trait::async_trait;
+#[cfg(not(target_arch = "wasm32"))]
 use reqwest::{header::HeaderValue, Client, Error as ReqwestError};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -11,7 +12,17 @@ use std::{
 use thiserror::Error;
 use url::Url;
 
-use super::common::{Authorization, JsonRpcError, Request, Response};
+#[cfg(target_arch = "wasm32")]
+use ic_cdk::api::management_canister::http_request::{
+    http_request, CanisterHttpRequestArgument, HttpHeader, HttpMethod, HttpResponse, TransformArgs,
+    TransformContext,
+};
+#[cfg(target_arch = "wasm32")]
+use jsonrpc_core::Output;
+
+use super::common::JsonRpcError;
+#[cfg(not(target_arch = "wasm32"))]
+use super::common::{Authorization, Request, Response};
 
 /// A low-level JSON-RPC Client over HTTP.
 ///
@@ -28,6 +39,7 @@ use super::common::{Authorization, JsonRpcError, Request, Response};
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug)]
 pub struct Provider {
     id: AtomicU64,
@@ -35,6 +47,15 @@ pub struct Provider {
     url: Url,
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug)]
+pub struct Provider {
+    pub id: AtomicU64,
+    pub url: String,
+    pub headers: Vec<HttpHeader>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Error, Debug)]
 /// Error thrown when sending an HTTP request
 pub enum ClientError {
@@ -50,6 +71,24 @@ pub enum ClientError {
     SerdeJson { err: serde_json::Error, text: String },
 }
 
+#[cfg(target_arch = "wasm32")]
+#[derive(Error, Debug)]
+/// Error thrown when sending an HTTP request
+pub enum ClientError {
+    /// Thrown if the request failed
+    #[error("IC Error: {err}")]
+    IcError { err: String },
+
+    #[error(transparent)]
+    /// Thrown if the response could not be parsed
+    JsonRpcError(#[from] JsonRpcError),
+
+    #[error("Deserialization Error: {err}. Response: {text}")]
+    /// Serde JSON Error
+    SerdeJson { err: serde_json::Error, text: String },
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl From<ClientError> for ProviderError {
     fn from(src: ClientError) -> Self {
         match src {
@@ -59,7 +98,14 @@ impl From<ClientError> for ProviderError {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg(target_arch = "wasm32")]
+impl From<ClientError> for ProviderError {
+    fn from(src: ClientError) -> Self {
+        ProviderError::JsonRpcClientError(Box::new(src))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl JsonRpcClient for Provider {
     type Error = ClientError;
@@ -102,6 +148,75 @@ impl JsonRpcClient for Provider {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+impl JsonRpcClient for Provider {
+    type Error = ClientError;
+
+    /// Sends a POST request with the provided method and the params serialized as JSON
+    /// over HTTP
+    async fn request<T: Serialize + Send + Sync, R: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: T,
+    ) -> Result<R, ClientError> {
+        let next_id = self.id.fetch_add(1, Ordering::SeqCst);
+
+        let http_method = HttpMethod::POST;
+
+        let data = serde_json::json!({
+            "jsonrpc":"2.0",
+            "method":method,
+            "params":params,
+            "id": next_id,
+        });
+
+        let request = CanisterHttpRequestArgument {
+            url: self.url.clone(),
+            // most eth execution layer rpc return will below 10 KB
+            max_response_bytes: Some(15_000),
+            method: http_method,
+            headers: self.headers.clone(),
+            body: Some(serde_json::to_vec(&data).unwrap()),
+            transform: Some(TransformContext::new(transform, vec![])),
+        };
+
+        let body = match http_request(request.clone()).await {
+            Ok((response,)) => response.body,
+            Err((r, m)) => {
+                return Err(ClientError::IcError {
+                    err: format!(
+                        "The http_request resulted into error. RejectionCode: {r:?}, Error: {m}"
+                    ),
+                })
+            }
+        };
+
+        ic_cdk::print(format!("req: {:?}", request));
+
+        let output = serde_json::from_slice::<Output>(&body).map_err(|err| {
+            ClientError::SerdeJson { err, text: String::from_utf8_lossy(&body).to_string() }
+        })?;
+
+        let result = match output {
+            Output::Success(value) => Ok(value.result),
+            Output::Failure(value) => Err(ClientError::JsonRpcError(JsonRpcError {
+                code: value.error.code.code(),
+                message: value.error.message,
+                data: value.error.data,
+            })),
+        }?;
+
+        let res: R = serde_json::from_value(result).map_err(|err| ClientError::SerdeJson {
+            err,
+            text: String::from_utf8_lossy(&body).to_string(),
+        })?;
+
+        Ok(res)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Provider {
     /// Initializes a new HTTP Client
     ///
@@ -171,6 +286,40 @@ impl Provider {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl Provider {
+    /// Initializes a new HTTP Client
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use ethers_providers::Http;
+    /// use url::Url;
+    ///
+    /// let url = Url::parse("http://localhost:8545").unwrap();
+    /// let provider = Http::new(url);
+    /// ```
+    pub fn new(url: String, headers: Vec<HttpHeader>) -> Self {
+        Url::parse(&url).expect("invaild url format");
+        Self { id: AtomicU64::new(1), url, headers }
+    }
+
+    /// The Url to which requests are made
+    pub fn url(&self) -> String {
+        self.url.clone()
+    }
+
+    /// Mutable access to the Url to which requests are made
+    pub fn url_mut(&mut self) -> &mut String {
+        &mut self.url
+    }
+
+    pub fn set_headers(&mut self, headers: Vec<HttpHeader>) {
+        self.headers = headers
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl FromStr for Provider {
     type Err = url::ParseError;
 
@@ -180,12 +329,38 @@ impl FromStr for Provider {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl FromStr for Provider {
+    type Err = url::ParseError;
+
+    fn from_str(src: &str) -> Result<Self, Self::Err> {
+        let url = Url::parse(src)?;
+        let request_headers = vec![
+            HttpHeader {
+                name: "Host".to_string(),
+                value: url.domain().ok_or(url::ParseError::EmptyHost)?.to_string(),
+            },
+            HttpHeader { name: "User-Agent".to_string(), value: "ethers_provider".to_string() },
+        ];
+        Ok(Provider::new(src.to_string(), request_headers))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Clone for Provider {
     fn clone(&self) -> Self {
         Self { id: AtomicU64::new(1), client: self.client.clone(), url: self.url.clone() }
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl Clone for Provider {
+    fn clone(&self) -> Self {
+        Self { id: AtomicU64::new(1), url: self.url.clone(), headers: self.headers.clone() }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Error, Debug)]
 /// Error thrown when dealing with Http clients
 pub enum HttpClientError {
@@ -196,4 +371,27 @@ pub enum HttpClientError {
     /// Thrown if unable to build client
     #[error(transparent)]
     ClientBuild(#[from] reqwest::Error),
+}
+
+#[cfg(target_arch = "wasm32")]
+fn transform(raw: TransformArgs) -> HttpResponse {
+    let mut sanitized = raw.response.clone();
+    sanitized.headers = vec![
+        HttpHeader {
+            name: "Content-Security-Policy".to_string(),
+            value: "default-src 'self'".to_string(),
+        },
+        HttpHeader { name: "Referrer-Policy".to_string(), value: "strict-origin".to_string() },
+        HttpHeader {
+            name: "Permissions-Policy".to_string(),
+            value: "geolocation=(self)".to_string(),
+        },
+        HttpHeader {
+            name: "Strict-Transport-Security".to_string(),
+            value: "max-age=63072000".to_string(),
+        },
+        HttpHeader { name: "X-Frame-Options".to_string(), value: "DENY".to_string() },
+        HttpHeader { name: "X-Content-Type-Options".to_string(), value: "nosniff".to_string() },
+    ];
+    sanitized
 }

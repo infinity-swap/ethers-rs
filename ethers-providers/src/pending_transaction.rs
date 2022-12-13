@@ -14,8 +14,6 @@ use std::{
 
 #[cfg(not(target_arch = "wasm32"))]
 use futures_timer::Delay;
-#[cfg(target_arch = "wasm32")]
-use wasm_timer::Delay;
 
 /// A pending transaction is a transaction which has been submitted but is not yet mined.
 /// `await`'ing on a pending transaction will resolve to a transaction receipt
@@ -165,7 +163,6 @@ macro_rules! rewake_with_new_state_if {
 impl<'a, P: JsonRpcClient> Future for PendingTransaction<'a, P> {
     type Output = Result<Option<TransactionReceipt>, ProviderError>;
 
-    #[cfg_attr(target_arch = "wasm32", allow(unused_must_use))]
     fn poll(self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Self::Output> {
         let this = self.project();
 
