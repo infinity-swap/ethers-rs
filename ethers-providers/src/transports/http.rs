@@ -52,7 +52,6 @@ pub struct Provider {
 pub struct Provider {
     pub id: AtomicU64,
     pub url: String,
-    pub max_response_bytes: Option<u64>,
     pub headers: Vec<HttpHeader>,
 }
 
@@ -174,8 +173,8 @@ impl JsonRpcClient for Provider {
 
         let request = CanisterHttpRequestArgument {
             url: self.url.clone(),
-            // max_response_bytes: self.max_response_bytes,
-            max_response_bytes: None,
+            // most eth execution layer rpc return will below 10 KB
+            max_response_bytes: Some(15_000),
             method: http_method,
             headers: self.headers.clone(),
             body: Some(serde_json::to_vec(&data).unwrap()),
@@ -300,9 +299,9 @@ impl Provider {
     /// let url = Url::parse("http://localhost:8545").unwrap();
     /// let provider = Http::new(url);
     /// ```
-    pub fn new(url: String, max_response_bytes: Option<u64>, headers: Vec<HttpHeader>) -> Self {
+    pub fn new(url: String, headers: Vec<HttpHeader>) -> Self {
         Url::parse(&url).expect("invaild url format");
-        Self { id: AtomicU64::new(1), url, max_response_bytes, headers }
+        Self { id: AtomicU64::new(1), url, headers }
     }
 
     /// The Url to which requests are made
@@ -313,10 +312,6 @@ impl Provider {
     /// Mutable access to the Url to which requests are made
     pub fn url_mut(&mut self) -> &mut String {
         &mut self.url
-    }
-
-    pub fn set_max_response_bytes(&mut self, max_bytes: u64) {
-        self.max_response_bytes = Some(max_bytes)
     }
 
     pub fn set_headers(&mut self, headers: Vec<HttpHeader>) {
@@ -347,7 +342,7 @@ impl FromStr for Provider {
             },
             HttpHeader { name: "User-Agent".to_string(), value: "ethers_provider".to_string() },
         ];
-        Ok(Provider::new(src.to_string(), Some(2000), request_headers))
+        Ok(Provider::new(src.to_string(), request_headers))
     }
 }
 
@@ -361,12 +356,7 @@ impl Clone for Provider {
 #[cfg(target_arch = "wasm32")]
 impl Clone for Provider {
     fn clone(&self) -> Self {
-        Self {
-            id: AtomicU64::new(1),
-            url: self.url.clone(),
-            max_response_bytes: self.max_response_bytes,
-            headers: self.headers.clone(),
-        }
+        Self { id: AtomicU64::new(1), url: self.url.clone(), headers: self.headers.clone() }
     }
 }
 
