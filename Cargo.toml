@@ -134,5 +134,5 @@ tracing-subscriber = { version = "0.3.16", default-features = false }
 tracing-futures = "0.2.5"
 
 # wasm
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2", default-features = false }
 instant = "0.1.12"
