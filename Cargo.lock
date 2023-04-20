@@ -1297,7 +1297,6 @@ dependencies = [
  "elliptic-curve",
  "ethabi",
  "generic-array",
- "getrandom",
  "hex",
  "hex-literal",
  "k256",

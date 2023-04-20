@@ -1,24 +1,24 @@
 /// Utilities for launching a ganache-cli testnet instance
-#[cfg(not(target_arch = "wasm32"))]
-mod ganache;
-#[cfg(not(target_arch = "wasm32"))]
-pub use ganache::{Ganache, GanacheInstance};
+// #[cfg(not(target_arch = "wasm32"))]
+// mod ganache;
+// #[cfg(not(target_arch = "wasm32"))]
+// pub use ganache::{Ganache, GanacheInstance};
 
 /// Utilities for launching a go-ethereum dev-mode instance
-#[cfg(not(target_arch = "wasm32"))]
-mod geth;
-#[cfg(not(target_arch = "wasm32"))]
-pub use geth::{Geth, GethInstance};
+// #[cfg(not(target_arch = "wasm32"))]
+// mod geth;
+// #[cfg(not(target_arch = "wasm32"))]
+// pub use geth::{Geth, GethInstance};
 
 /// Utilities for working with a `genesis.json` and other chain config structs.
 mod genesis;
 pub use genesis::{ChainConfig, CliqueConfig, EthashConfig, Genesis, GenesisAccount};
 
 /// Utilities for launching an anvil instance
-#[cfg(not(target_arch = "wasm32"))]
-mod anvil;
-#[cfg(not(target_arch = "wasm32"))]
-pub use anvil::{Anvil, AnvilInstance};
+// #[cfg(not(target_arch = "wasm32"))]
+// mod anvil;
+// #[cfg(not(target_arch = "wasm32"))]
+// pub use anvil::{Anvil, AnvilInstance};
 
 /// Moonbeam utils
 pub mod moonbeam;
